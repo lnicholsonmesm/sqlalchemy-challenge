@@ -102,39 +102,104 @@ glimpse(precip_tibble) # this will be super useful for my 400-column table later
 #barplot of precipitation stuff
 # ******************************************************************************
 x = precip_tibble %>% select("date")
+x$date = parse_date(x$date)
+x= x$date
+xvec = precip_tibble$date
 y = precip_tibble %>% select(prcp)
+min_x = ymd(min(x$date)) #had to make this a date with lubridates ymd
+max_x = ymd(max(x$date)) #had to make this a date with lubridates ymd
 
+library(scales)
 
-
-
-precip_tibble %>% ggplot() +
+prcp_test <- precip_tibble %>% ggplot() +
   geom_bar(mapping = aes(x = date))
 #that's horrible
+prcp_test
+
 
 prcp_graph <- ggplot(precip_tibble, 
-                     aes(x=`date`, y=prcp)) +
-  geom_bar(stat = 'identity', width = 0.2) +
-  xlab("Date") +
-  ylab("Precipitation (in)") +
-  title("Measured Rainfall, August 2016 - August 2017")
-  
-prcp_graph
-summarize(precip_tibble)
- 
-  
-## MAKING IT AS A TIME SERIES
-precip_nonas <- precip_tibble %>% filter(!is.na(`date`), !is.na(prcp))
-ts (precip_nonas, start=c(2016), end=c(2017), frequency=1) # Yearly Data
-#autoplot(precip_tibble)
-  
-  
-  
-  
-  
-  
-  
-  
+                     aes(x=as.Date(`date`), y=prcp, fill = prcp)) +
+  geom_bar(stat = 'identity', width = 1) +
+  scale_x_date(labels = date_format("%Y-%m-%d"), breaks = date_breaks("months"), limits = c(min_x, max_x)) + 
+  labs(title = "Measured Rainfall, August 2016 - August 2017",
+    x = "Date",
+    y = "Precipitation (in)"
+    ) + 
+  theme_bw() +
+  theme(plot.title = element_text(),
+    legend.background = element_rect(fill = "white", size = 4, color = 'white'),
+    axis.text.x = element_text(angle = 45, hjust=1),
+    panel.grid.major = element_line(color = "grey70", size = 0.2),
+    panel.grid.minor = element_blank()
+    ) + 
+  scale_fill_gradient(low = "light blue", high = "dark blue")
+  #scale_x_date()
 
+prcp_graph
+library(janitor)
+summary_table <- summary(precip_tibble)
+summary_table
+#precip_tibble %>% tabyl(prcp)
+
+
+  
+# STATION ANALYSIS
+# ******************************************************************************
+# 1 design query to calculate total number of stations
+Stations <- dbGetQuery(con, "SELECT * FROM station")
+num_stations <- con%>%tbl(sql("SELECT count(distinct station) as StationCount FROM station"))
+num_stations
+
+Stations
+station_activity <- dbGetQuery(con,"SELECT measurement.station, count(measurement.station) AS ObservationCounts, station.name FROM measurement LEFT JOIN station on station.station = measurement.station GROUP BY measurement.station ORDER BY ObservationCounts DESC")
+  
+station_activity
+#Which station has the highest number of observations?
+highest_obs_station <- station_activity %>% filter(ObservationCounts == max(ObservationCounts))
+
+print(paste("The highest number of observations was ", highest_obs_station$ObservationCounts, " at ", highest_obs_station$name, sep=''))
+
+
+dbGetQuery(con, "SELECT max(date) FROM measurement")
+#is #2017-08-23, so 1yr back is 2016-08-23
+
+tobs12mo <- dbGetQuery(con, "SELECT * FROM measurement WHERE date >= '2016-08-23'")
+
+stationcount <- tobs12mo %>% add_count(station)
+maxobs <- stationcount %>% filter(n == max(n))
+
+maxobs
+
+# HISTOGRAM PLOT
+bins = 12
+histplt <- ggplot(maxobs,
+                     aes(x=maxobs$tobs, fill=maxobs$tobs)) +
+  geom_histogram(bins=bins, fill='dark blue'
+                 #, fill = 'dark orange'
+                 ) + 
+  labs(title = "Measured Temperature Observations, \nWaihee Station, August 2016 - August 2017",
+       x = "Temperature",
+       y = "Number of Observations" #technically it's a year anda  day
+  ) + 
+  theme_bw() +
+  theme(plot.title = element_text(),
+       # legend.background = element_rect(fill = "white", size = 4, color = 'white'),
+     #   legend.position = c(0,1),
+        axis.text.x = element_text(angle = 0, hjust=1),
+        panel.grid.major = element_line(color = "grey70", size = 0.2),
+        panel.grid.minor = element_blank()
+  ) + 
+  scale_fill_gradient(low = "light blue", high = "dark blue")
+
+histplt
+
+
+
+
+
+
+
+view(Stations)
 
 ## Query All Records in the the Database
 #data = engine.execute("SELECT * FROM Census_Data")
