@@ -12,41 +12,14 @@
 library(tidyverse)
 library(dbplyr)
 library(RSQLite)
+library(jsonlite)
+
 
 # Code I need
 # ******************************************************************************
-#Most existing databases don’t live in a file, but instead live on another server. In real life that your code will look more like this:
-  
-#  con <- DBI::dbConnect(RMySQL::MySQL(), 
-#                        host = "database.rstudio.com",
-#                        user = "hadley",
-#                        password = rstudioapi::askForPassword("Database password")
-#  )
-#tbl makes a ref to the sql table
-# collect() pulls the data into a dataframe (ie brings it into memory)
-
-#src_sqlite()
-#src_mysql()
-#src_postgres()
-#show_query will show you the SQL code it's written.
-#explain() will tell you how the db is going to run the query
-# Create Connection
-# ******************************************************************************
-## I'm using SQLite, so I only need a path to the database and not the user/password/host/port # information per the first example on help page ?dbConnect 
-
-#connection <- dbConnect(RSQLite::SQLite(),":memory")
-#connection
-# if I needed to connect with a password, I'd use a config file (maybe) and access it with source(config.R) Then I would do something like:
-    #driver <- dbDriver("PostgreSQL")
-    #connection <- dbConnect(driver, host=host, user=user, password=password, dbname=dbname, port=port)
-## SQLite only needs a path to the database. (Here, ":memory:" is a special
-# if we're creating data, we can use path=":memory:" to create an in-memory database.) Other database drivers
-# will require more details (like user, password, host, port, etc.)
-
-##dbConnect()
-path1 = "./Resources/hawaii.sqlite"
-path2 = "/Users/lauranicholson/Desktop/data_analysis/bootcamp/Homework/sqlalchemy-challenge/butIneedtolearnR/Resources/hawaii.sqlite"
-con <- dbConnect(RSQLite::SQLite(), path2)
+path = "hawaii.sqlite"
+#path = "/Users/lauranicholson/Desktop/data_analysis/bootcamp/Homework/sqlalchemy-challenge/butIneedtolearnR/Resources/hawaii.sqlite"
+con <- dbConnect(RSQLite::SQLite(), path)
 con
 # ******************************************************************************
 
@@ -82,6 +55,7 @@ Measurement_v1_columns #dates are in measurements table
 
 
 #Get last year of data, retrieving date and precipitation (date, prcp) values only
+# ******************************************************************************
 precipitation <- con%>%tbl(sql("SELECT date, prcp FROM measurement WHERE date >= '2016-08-23'"))
 precipitation
 #date is a character column--going to make it a date with lubridate package
@@ -98,7 +72,10 @@ precip_df <- tibble(precip_tibble)
 glimpse(precip_tibble) # this will be super useful for my 400-column table later
 #also, a tribble() will create a table by rows, ie you can put all column names first
 
-
+# install.packages('jsonify')
+library(jsonify)
+precip_df
+to_json(precipitation)
 #barplot of precipitation stuff
 # ******************************************************************************
 x = precip_tibble %>% select("date")
@@ -155,11 +132,12 @@ station_activity <- dbGetQuery(con,"SELECT measurement.station, count(measuremen
   
 station_activity
 #Which station has the highest number of observations?
+# ******************************************************************************
 highest_obs_station <- station_activity %>% filter(ObservationCounts == max(ObservationCounts))
 
 print(paste("The highest number of observations was ", highest_obs_station$ObservationCounts, " at ", highest_obs_station$name, sep=''))
 
-
+dbGetQuery(con, "SELECT min(date) FROM measurement")
 dbGetQuery(con, "SELECT max(date) FROM measurement")
 #is #2017-08-23, so 1yr back is 2016-08-23
 
@@ -194,21 +172,7 @@ histplt <- ggplot(maxobs,
 histplt
 
 
-
-
-
-
-
 view(Stations)
-
-## Query All Records in the the Database
-#data = engine.execute("SELECT * FROM Census_Data")
-dbSendQuery(con, "SELECT * FROM sqlite_master")
-data <- dbSendQuery(con, "SELECT * FROM Hawaii")
-
-dbDisconnect(con)
-
-
 
 data <- dbSendQuery(con, "SELECT * FROM Measurements")
 remote_name(con)
@@ -217,162 +181,170 @@ remote_src(con, "sqlite_master")
 tbl(con, "measurements")
 remote_query_plan(con)
 #getTableInformation(con)
+dbDisconnect(con)
+
+### RUN THE API
+r <- plumb('plumber.R')  # Where 'plumber.R' is the location of the file shown above
+r$run(port=8000)
 
 
 
 
 
 
-dbManager(con)
-rs <- dbSendQuery(con, "select * from seattlecrimeincidents limit 100"); 
-df <- fetch(rs)
-
-
-df = tbl(con, from = 'BGBUref')
-df = tbl(con, from = in_schema('dbo', 'BGBUref'))
-If your connection (con) is not to the QnRStore database directly then this may work:
-  
-  df = tbl(con, from = in_schema('QnRStore.dbo', 'BGBUref'))
-
-dbDri
 
 
 
 
-#I don't think RODBC really solves this problem for you. It does allow you to talk to different products, but so do the various DBI drivers.
 
 
-#' Get the table information for a postgres database
-#' @param config the configuration list
-#' @return the table names, columns, and column types of all columns in the database
-getTableInformation <- function(config = config.gp) {
-  tables <- dbSendQuery(con,
-    "SELECT table_name, column_name, data_type 
-    FROM information_schema.columns 
-    WHERE table_name NOT LIKE '%prt%'
-      AND table_name NOT LIKE '%ext%'
-      AND table_name NOT LIKE '%tmp%'
-    ORDER BY 1, 2"#,
-    #config
-  )
-}
-
-#' Replacement of the normal update function, you don't need to call this.
-update <- function(object, ...) {
-  args <- list(...)
-  for (nm in names(args)) {
-    object[[nm]] <- args[[nm]]
-  }
-  if (is.null(object$select)) {
-    if (is.ident(object$from)) {
-      var_names <- object$select
-    }
-    else {
-      var_names <- qry_fields(object$src$con, object$from)
-    }
-    vars <- lapply(var_names, as.name)
-    object$select <- vars
-  }
-  object$query <- dplyr:::build_query(object)
-  object
-  
-  To use this function, you can simply call
-  
-  1
-  reflectDatabase()
-  and if you’re using a Postgres database, that should be it!
-    
-    The fun part now, is that I can do things like
-  
-  1
-  res <- inner_join(my_table_1, my_table_2)
-  where my_table_1 and my_table_2 are simply names of tables in my database. This provides me with auto-complete of table names, search-able table names and columns, etc.
-  
-  For example:
-    
-    1
-  searchTables('user')
-#' Function to reflect a database, generalizable to others beyond postgres 
-#' by simply changing getTableInformation appropriately
-reflectDatabase <- function(config, envir.name = "tables",
-                            subclass = "SQlite") {
-  if (!(envir.name %in% search())) {
-    envir <- new.env(parent = .GlobalEnv)
-  } else {
-    envir <- as.environment(envir.name)
-    detach(envir.name, character.only = TRUE)
-  }
-  src <- do.call(src_sqlite, config)
-  tables <- getTableInformation(config)
-  tables <- split(tables, tables$table_name)
-  lapply(tables, function(i) {
-    nm <- ident(i$table_name[1])
-    vars <- lapply(i$column_name, as.name)
-    tbl <- dplyr::make_tbl(c(subclass, "sql"), src = src, from = nm,
-                           select = vars, summarise = FALSE, mutate = FALSE,
-                           where = NULL, group_by = NULL, order_by = NULL)
-    tbl <- update(tbl)
-    assign(
-      nm,
-      tbl,
-      envir = envir
-    )
-  })
-  attach(envir, name = envir.name)
-}
-
-searchTables <- function(str, env = "tables") {
-  all.tbls <- ls(env)
-  all.tbls[grep(str, all.tbls)]
-}
-To use this function, you can simply call
-
-1
-reflectDatabase(con, env="tables")
 
 
-Database connection
-in_schema()
+######## EVERTHING BELOW ARE NOTES/EXAMPLE CODE FROM THE INTERNET ******
+# 
+# dbManager(con)
+# rs <- dbSendQuery(con, "select * from seattlecrimeincidents limit 100");
+# df <- fetch(rs)
+# 
+# 
+# df = tbl(con, from = 'BGBUref')
+# df = tbl(con, from = in_schema('dbo', 'BGBUref'))
+# If your connection (con) is not to the QnRStore database directly then this may work:
+# 
+#   df = tbl(con, from = in_schema('QnRStore.dbo', 'BGBUref'))
+# 
+# #I don't think RODBC really solves this problem for you. It does allow you to talk to different products, but so do the various DBI drivers.
+# 
+# 
+# #' Get the table information for a postgres database
+# #' @param config the configuration list
+# #' @return the table names, columns, and column types of all columns in the database
+# getTableInformation <- function(config = config.gp) {
+#   tables <- dbSendQuery(con,
+#     "SELECT table_name, column_name, data_type
+#     FROM information_schema.columns
+#     WHERE table_name NOT LIKE '%prt%'
+#       AND table_name NOT LIKE '%ext%'
+#       AND table_name NOT LIKE '%tmp%'
+#     ORDER BY 1, 2"#,
+#     #config
+#   )
+# }
+# 
+# #' Replacement of the normal update function, you don't need to call this.
+# update <- function(object, ...) {
+#   args <- list(...)
+#   for (nm in names(args)) {
+#     object[[nm]] <- args[[nm]]
+#   }
+#   if (is.null(object$select)) {
+#     if (is.ident(object$from)) {
+#       var_names <- object$select
+#     }
+#     else {
+#       var_names <- qry_fields(object$src$con, object$from)
+#     }
+#     vars <- lapply(var_names, as.name)
+#     object$select <- vars
+#   }
+#   object$query <- dplyr:::build_query(object)
+#   object
+# 
+#   To use this function, you can simply call
+#   1
+#   reflectDatabase()
+#   and if you’re using a Postgres database, that should be it!
+# 
+#     The fun part now, is that I can do things like
+# 
+#   1
+#   res <- inner_join(my_table_1, my_table_2)
+#   where my_table_1 and my_table_2 are simply names of tables in my database. This provides me with auto-complete of table names, search-able table names and columns, etc.
+# 
+#   For example:
+#     1
+#   searchTables('user')
+# #' Function to reflect a database, generalizable to others beyond postgres
+# #' by simply changing getTableInformation appropriately
+# reflectDatabase <- function(config, envir.name = "tables",
+#                             subclass = "SQlite") {
+#   if (!(envir.name %in% search())) {
+#     envir <- new.env(parent = .GlobalEnv)
+#   } else {
+#     envir <- as.environment(envir.name)
+#     detach(envir.name, character.only = TRUE)
+#   }
+#   src <- do.call(src_sqlite, config)
+#   tables <- getTableInformation(config)
+#   tables <- split(tables, tables$table_name)
+#   lapply(tables, function(i) {
+#     nm <- ident(i$table_name[1])
+#     vars <- lapply(i$column_name, as.name)
+#     tbl <- dplyr::make_tbl(c(subclass, "sql"), src = src, from = nm,
+#                            select = vars, summarise = FALSE, mutate = FALSE,
+#                            where = NULL, group_by = NULL, order_by = NULL)
+#     tbl <- update(tbl)
+#     assign(
+#       nm,
+#       tbl,
+#       envir = envir
+#     )
+#   })
+#   attach(envir, name = envir.name)
+# }
+# 
+# searchTables <- function(str, env = "tables") {
+#   all.tbls <- ls(env)
+#   all.tbls[grep(str, all.tbls)]
+# }
+# To use this function, you can simply call
+# 
+# 1
+# reflectDatabase(con, env="tables")
+# 
+# 
+# Database connection
+# in_schema()
+# 
+# Refer to a table in a schema
+# 
+# memdb_frame() tbl_memdb() src_memdb()
+# 
+# Create a database table in temporary in-memory database.
+# 
+# remote_name() remote_src() remote_con() remote_query() remote_query_plan()
+# 
+# Metadata about a remote table
+# 
+# SQL generation
+# build_sql()
+# 
+# Build a SQL string.
+# 
+# escape() escape_ansi() sql_vector()
+# 
+# Escape/quote a string.
+# 
+# ident() ident_q() is.ident()
+# 
+# Flag a character vector as SQL identifiers
+# 
+# partial_eval()
+# 
+# Partially evaluate an expression.
+# 
+# sql() is.sql() as.sql()
+# 
+# SQL escaping.
+# 
+# sql_expr() sql_call2()
+# 
+# Generate SQL from R expressions
+# 
+# translate_sql() translate_sql_()
+# 
+# Translate an expression to sql.
 
-Refer to a table in a schema
-
-memdb_frame() tbl_memdb() src_memdb()
-
-Create a database table in temporary in-memory database.
-
-remote_name() remote_src() remote_con() remote_query() remote_query_plan()
-
-Metadata about a remote table
-
-SQL generation
-build_sql()
-
-Build a SQL string.
-
-escape() escape_ansi() sql_vector()
-
-Escape/quote a string.
-
-ident() ident_q() is.ident()
-
-Flag a character vector as SQL identifiers
-
-partial_eval()
-
-Partially evaluate an expression.
-
-sql() is.sql() as.sql()
-
-SQL escaping.
-
-sql_expr() sql_call2()
-
-Generate SQL from R expressions
-
-translate_sql() translate_sql_()
-
-Translate an expression to sql.
-
-window_order() window_frame()
-
-Override window order and frame
+# window_order() window_frame()
+# 
+# Override window order and frame
